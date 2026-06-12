@@ -1,9 +1,15 @@
 package com.practice.workflow.service.impl;
 
+import com.practice.workflow.common.enums.WorkflowTaskStatus;
 import com.practice.workflow.domain.WorkflowTask;
+import com.practice.workflow.repository.WorkflowTaskRepository;
 import com.practice.workflow.service.WorkflowTaskService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+
+import java.time.LocalDateTime;
+import java.util.Objects;
 
 /**
  * <p>TODO</p>
@@ -16,6 +22,15 @@ import org.springframework.stereotype.Service;
 @Slf4j
 public class WorkflowTaskServiceImpl implements WorkflowTaskService {
 
+    public static final String TASK_KEY = "task:";
+
+
+    public static final String COLON = ":";
+
+
+    @Autowired
+    private WorkflowTaskRepository workflowTaskRepository;
+
 
     /**
      * 根据 projectId + bizType + bizId + sourceId 生成 bizKey
@@ -24,6 +39,7 @@ public class WorkflowTaskServiceImpl implements WorkflowTaskService {
      * 初始状态 WAITING
      * retryCount = 0
      * maxRetry = 3
+     *
      * @param projectId
      * @param bizType
      * @param bizId
@@ -32,8 +48,21 @@ public class WorkflowTaskServiceImpl implements WorkflowTaskService {
      */
     @Override
     public WorkflowTask createTask(Long projectId, String bizType, String bizId, String sourceId) {
-
-        return null;
+        String bizKey = assembleBizKey(projectId, bizType, bizId, sourceId);
+        WorkflowTask workflowTask = workflowTaskRepository.findWorkflowTaskByBizKey(bizKey);
+        if (!Objects.isNull(workflowTask)) {
+            return workflowTask;
+        }
+        workflowTask = new WorkflowTask();
+        workflowTask.setBizKey(bizKey);
+        workflowTask.setBizId(bizId);
+        workflowTask.setSourceId(sourceId);
+        workflowTask.setBizKey(bizType);
+        workflowTask.setProjectId(projectId);
+        workflowTask.setStatus(WorkflowTaskStatus.WAITING);
+        assembleAuditParam(workflowTask);
+        workflowTaskRepository.insertTask(workflowTask);
+        return workflowTask;
     }
 
     @Override
@@ -54,5 +83,16 @@ public class WorkflowTaskServiceImpl implements WorkflowTaskService {
     @Override
     public void reviewTask(Long taskId, String reviewerId, boolean approved, String manualResult) {
 
+    }
+
+
+    private static String assembleBizKey(Long projectId, String bizType, String bizId, String sourceId) {
+        return TASK_KEY + projectId.toString() + COLON + bizType + COLON + bizId + COLON + sourceId;
+    }
+
+
+    private static void assembleAuditParam(WorkflowTask workflowTask) {
+        workflowTask.setCreatedAt(LocalDateTime.now());
+        workflowTask.setUpdatedAt(LocalDateTime.now());
     }
 }
