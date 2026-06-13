@@ -60,6 +60,8 @@ public class WorkflowTaskServiceImpl implements WorkflowTaskService {
         workflowTask.setBizType(bizType);
         workflowTask.setProjectId(projectId);
         workflowTask.setStatus(WorkflowTaskStatus.WAITING);
+        workflowTask.setMaxRetry(3);
+        workflowTask.setRetryCount(0);
         assembleAuditParam(workflowTask);
         long id = workflowTaskRepository.insertTask(workflowTask);
         workflowTask.setId(id);

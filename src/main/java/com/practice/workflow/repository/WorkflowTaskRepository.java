@@ -17,10 +17,10 @@ import java.util.concurrent.atomic.AtomicLong;
 public class WorkflowTaskRepository {
 
 
-    private final ConcurrentHashMap<Long, WorkflowTask> taskMap = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Long, WorkflowTask> taskMap = new ConcurrentHashMap<Long, WorkflowTask>();
 
 
-    private final ConcurrentHashMap<String, Long> bizKeyIndex = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Long> bizKeyIndex = new ConcurrentHashMap<String, Long>();
 
     private final AtomicLong idGenerator = new AtomicLong(0L);
 
@@ -39,6 +39,9 @@ public class WorkflowTaskRepository {
     }
 
     public WorkflowTask findWorkflowTaskByBizKey(String bizKey) {
+        if (!bizKeyIndex.containsKey(bizKey)) {
+            return null;
+        }
         return taskMap.getOrDefault(bizKeyIndex.get(bizKey), null);
     }
 }
