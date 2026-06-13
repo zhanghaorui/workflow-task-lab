@@ -25,10 +25,9 @@ public class WorkflowTaskRepository {
     private final AtomicLong idGenerator = new AtomicLong(0L);
 
     public synchronized long insertTask(WorkflowTask workflowTask) {
-        long l = idGenerator.get();
+        long l = idGenerator.getAndIncrement();
         taskMap.put(l, workflowTask);
-
-
+        bizKeyIndex.put(workflowTask.getBizKey(), l);
         return l;
     }
 
@@ -36,7 +35,7 @@ public class WorkflowTaskRepository {
         if (taskMap.containsKey(id)) {
             return taskMap.get(id);
         }
-        return new WorkflowTask();
+        return null;
     }
 
     public WorkflowTask findWorkflowTaskByBizKey(String bizKey) {

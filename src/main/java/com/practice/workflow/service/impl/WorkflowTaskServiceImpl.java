@@ -57,11 +57,12 @@ public class WorkflowTaskServiceImpl implements WorkflowTaskService {
         workflowTask.setBizKey(bizKey);
         workflowTask.setBizId(bizId);
         workflowTask.setSourceId(sourceId);
-        workflowTask.setBizKey(bizType);
+        workflowTask.setBizType(bizType);
         workflowTask.setProjectId(projectId);
         workflowTask.setStatus(WorkflowTaskStatus.WAITING);
         assembleAuditParam(workflowTask);
-        workflowTaskRepository.insertTask(workflowTask);
+        long id = workflowTaskRepository.insertTask(workflowTask);
+        workflowTask.setId(id);
         return workflowTask;
     }
 
