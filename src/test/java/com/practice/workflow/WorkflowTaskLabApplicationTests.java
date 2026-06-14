@@ -1,5 +1,6 @@
 package com.practice.workflow.service;
 
+import com.practice.workflow.common.enums.BizErrorCode;
 import com.practice.workflow.common.enums.WorkflowTaskStatus;
 import com.practice.workflow.common.exception.WorkflowTaskException;
 import com.practice.workflow.domain.WorkflowTask;
@@ -56,6 +57,16 @@ class WorkflowTaskServiceTest {
 
     @Nested
     class CreateTaskTests {
+
+
+        @Test
+        void shouldThrowInvalidParam() {
+            WorkflowTaskException exception = assertThrows(WorkflowTaskException.class, () -> {
+                workflowTaskService.createTask(null, "", "", "");
+            });
+            assertEquals(BizErrorCode.PARAM_INVALID.getCode(), exception.getErrorCode());
+
+        }
 
         @Test
         void shouldCreateWaitingTask() {
@@ -208,11 +219,11 @@ class WorkflowTaskServiceTest {
         void shouldThrowWhenWorkerMismatch() {
             WorkflowTask task = createAndStartTask("worker-1");
 
-            assertThrows(
+            WorkflowTaskException exception = assertThrows(
                     WorkflowTaskException.class,
                     () -> workflowTaskService.finishAutoProcess(task.getId(), "worker-2", "auto-result")
             );
-
+            assertEquals(BizErrorCode.TASK_WORKER_MISMATCH.getCode(), exception.getErrorCode());
             assertEquals(WorkflowTaskStatus.PROCESSING, task.getStatus());
             assertNull(task.getAutoResult());
             assertNull(task.getFinalResult());

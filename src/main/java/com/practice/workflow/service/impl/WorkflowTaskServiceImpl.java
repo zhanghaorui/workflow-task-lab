@@ -53,6 +53,9 @@ public class WorkflowTaskServiceImpl implements WorkflowTaskService {
      */
     @Override
     public WorkflowTask createTask(Long projectId, String bizType, String bizId, String sourceId) {
+        if (Objects.isNull(projectId) || !StringUtils.hasText(bizType) || !StringUtils.hasText(bizId) || !StringUtils.hasText(sourceId)) {
+            throw WorkflowTaskException.of(BizErrorCode.PARAM_INVALID);
+        }
         String bizKey = assembleBizKey(projectId, bizType, bizId, sourceId);
         WorkflowTask workflowTask = workflowTaskRepository.findWorkflowTaskByBizKey(bizKey);
         if (!Objects.isNull(workflowTask)) {
@@ -129,10 +132,10 @@ public class WorkflowTaskServiceImpl implements WorkflowTaskService {
                         task.setFinishedAt(LocalDateTime.now());
                     }
                 } else {
-                    throw WorkflowTaskException.of(BizErrorCode.NOT_SAME_WORKER);
+                    throw WorkflowTaskException.of(BizErrorCode.TASK_WORKER_MISMATCH);
                 }
             } else {
-                throw WorkflowTaskException.of(BizErrorCode.WRONG_REVIEW_STATUS);
+                throw WorkflowTaskException.of(BizErrorCode.TASK_STATUS_ILLEGAL);
             }
         }
 
@@ -153,9 +156,11 @@ public class WorkflowTaskServiceImpl implements WorkflowTaskService {
                     task.setStatus(WorkflowTaskStatus.WAIT_MANUAL_REVIEW);
                     task.setAutoResult(autoResult);
                     task.setUpdatedAt(LocalDateTime.now());
+                } else {
+                    throw WorkflowTaskException.of(BizErrorCode.TASK_STATUS_ILLEGAL);
                 }
             } else {
-                throw WorkflowTaskException.of(BizErrorCode.NOT_SAME_WORKER);
+                throw WorkflowTaskException.of(BizErrorCode.TASK_WORKER_MISMATCH);
             }
         }
     }
@@ -177,7 +182,7 @@ public class WorkflowTaskServiceImpl implements WorkflowTaskService {
                 workflowTaskById.setUpdatedAt(LocalDateTime.now());
                 workflowTaskById.setStatus(approved ? WorkflowTaskStatus.REVIEW_CONFIRMED : WorkflowTaskStatus.REVIEW_REJECTED);
             } else {
-                throw WorkflowTaskException.of(BizErrorCode.WRONG_REVIEW_STATUS);
+                throw WorkflowTaskException.of(BizErrorCode.TASK_STATUS_ILLEGAL);
             }
         }
     }
