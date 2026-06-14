@@ -127,12 +127,10 @@ public class WorkflowTaskServiceImpl implements WorkflowTaskService {
                         task.setRetryCount(retryCount + 1);
                         task.setErrorMessage(errorMessage);
                         task.setFinishedAt(LocalDateTime.now());
-                        throw WorkflowTaskException.of(BizErrorCode.TASK_RETRY_EXCEEDED);
                     }
                 }
             }
         }
-        throw WorkflowTaskException.of(BizErrorCode.TASK_STATUS_ILLEGAL);
 
     }
 
@@ -155,7 +153,6 @@ public class WorkflowTaskServiceImpl implements WorkflowTaskService {
                 }
             }
         }
-        throw WorkflowTaskException.of(BizErrorCode.TASK_STATUS_ILLEGAL);
     }
 
     @Override
@@ -176,7 +173,6 @@ public class WorkflowTaskServiceImpl implements WorkflowTaskService {
                 workflowTaskById.setStatus(approved ? WorkflowTaskStatus.REVIEW_CONFIRMED : WorkflowTaskStatus.REVIEW_REJECTED);
             }
         }
-        throw WorkflowTaskException.of(BizErrorCode.TASK_STATUS_ILLEGAL);
     }
 
 
