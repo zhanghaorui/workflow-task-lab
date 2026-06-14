@@ -67,7 +67,8 @@ public class WorkflowTaskServiceImpl implements WorkflowTaskService {
         workflowTask.setStatus(WorkflowTaskStatus.WAITING);
         workflowTask.setMaxRetry(MAX_RETRY_COUNT);
         workflowTask.setRetryCount(0);
-        assembleAuditParam(workflowTask);
+        workflowTask.setCreatedAt(LocalDateTime.now());
+        workflowTask.setUpdatedAt(LocalDateTime.now());
         long id = workflowTaskRepository.insertTask(workflowTask);
         workflowTask.setId(id);
         return workflowTask;
@@ -104,12 +105,12 @@ public class WorkflowTaskServiceImpl implements WorkflowTaskService {
 
     @Override
     public void failTask(Long taskId, String workerId, String errorMessage) {
-        if (Objects.isNull(taskId) || StringUtils.isEmpty(workerId)) {
-            return;
+        if (Objects.isNull(taskId) || !StringUtils.hasText(workerId)) {
+            throw WorkflowTaskException.of(BizErrorCode.PARAM_INVALID);
         }
         WorkflowTask task = workflowTaskRepository.getWorkflowTaskById(taskId);
         if (Objects.isNull(task)) {
-            return;
+            throw WorkflowTaskException.of(BizErrorCode.TASK_NOT_FOUND);
         }
         synchronized (task) {
             if (Objects.equals(WorkflowTaskStatus.PROCESSING, task.getStatus())) {
@@ -126,21 +127,23 @@ public class WorkflowTaskServiceImpl implements WorkflowTaskService {
                         task.setRetryCount(retryCount + 1);
                         task.setErrorMessage(errorMessage);
                         task.setFinishedAt(LocalDateTime.now());
+                        throw WorkflowTaskException.of(BizErrorCode.TASK_RETRY_EXCEEDED);
                     }
                 }
             }
-
         }
+        throw WorkflowTaskException.of(BizErrorCode.TASK_STATUS_ILLEGAL);
+
     }
 
     @Override
     public void finishAutoProcess(Long taskId, String workerId, String autoResult) {
         if (Objects.isNull(taskId) || !StringUtils.hasText(workerId) || !StringUtils.hasText(autoResult)) {
-            return;
+            throw WorkflowTaskException.of(BizErrorCode.PARAM_INVALID);
         }
         WorkflowTask task = workflowTaskRepository.getWorkflowTaskById(taskId);
         if (Objects.isNull(task)) {
-            return;
+            throw WorkflowTaskException.of(BizErrorCode.TASK_NOT_FOUND);
         }
         synchronized (task) {
             if (Objects.equals(workerId, task.getWorkerId())) {
@@ -152,6 +155,7 @@ public class WorkflowTaskServiceImpl implements WorkflowTaskService {
                 }
             }
         }
+        throw WorkflowTaskException.of(BizErrorCode.TASK_STATUS_ILLEGAL);
     }
 
     @Override
@@ -172,7 +176,7 @@ public class WorkflowTaskServiceImpl implements WorkflowTaskService {
                 workflowTaskById.setStatus(approved ? WorkflowTaskStatus.REVIEW_CONFIRMED : WorkflowTaskStatus.REVIEW_REJECTED);
             }
         }
-
+        throw WorkflowTaskException.of(BizErrorCode.TASK_STATUS_ILLEGAL);
     }
 
 
@@ -181,9 +185,5 @@ public class WorkflowTaskServiceImpl implements WorkflowTaskService {
     }
 
 
-    private static void assembleAuditParam(WorkflowTask workflowTask) {
-        workflowTask.setCreatedAt(LocalDateTime.now());
-        workflowTask.setUpdatedAt(LocalDateTime.now());
-    }
 }
 
