@@ -38,7 +38,7 @@ public class WorkflowTaskRepository {
         return null;
     }
 
-    public WorkflowTask findWorkflowTaskByBizKey(String bizKey) {
+    public synchronized WorkflowTask findWorkflowTaskByBizKey(String bizKey) {
         if (!bizKeyIndex.containsKey(bizKey)) {
             return null;
         }
