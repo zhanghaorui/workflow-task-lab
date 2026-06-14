@@ -5,6 +5,9 @@ spring:
   application:
     name: workflow-task-lab
 
+  sql:
+    init:
+      mode: always
   # H2 内存数据库
   datasource:
     url: jdbc:h2:mem:workflow_db;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
