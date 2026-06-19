@@ -57,7 +57,7 @@ public class WorkflowTaskServiceImpl implements WorkflowTaskService {
             throw WorkflowTaskException.of(BizErrorCode.PARAM_INVALID);
         }
         String bizKey = assembleBizKey(projectId, bizType, bizId, sourceId);
-        WorkflowTask workflowTask = workflowTaskRepository.findWorkflowTaskByBizKey(bizKey);
+        WorkflowTask workflowTask = workflowTaskRepository.findByBizKey(bizKey);
         if (!Objects.isNull(workflowTask)) {
             return workflowTask;
         }
@@ -72,7 +72,7 @@ public class WorkflowTaskServiceImpl implements WorkflowTaskService {
         workflowTask.setRetryCount(0);
         workflowTask.setCreatedAt(LocalDateTime.now());
         workflowTask.setUpdatedAt(LocalDateTime.now());
-        long id = workflowTaskRepository.insertTask(workflowTask);
+        long id = workflowTaskRepository.insertWorkFlowTask(workflowTask);
         workflowTask.setId(id);
         return workflowTask;
     }
@@ -82,7 +82,7 @@ public class WorkflowTaskServiceImpl implements WorkflowTaskService {
         if (Objects.isNull(taskId) || Objects.isNull(workerId)) {
             throw WorkflowTaskException.of(BizErrorCode.PARAM_INVALID);
         }
-        WorkflowTask task = workflowTaskRepository.getWorkflowTaskById(taskId);
+        WorkflowTask task = workflowTaskRepository.findById(taskId);
         if (Objects.isNull(task)) {
             throw WorkflowTaskException.of(BizErrorCode.TASK_NOT_FOUND);
         }
@@ -111,7 +111,7 @@ public class WorkflowTaskServiceImpl implements WorkflowTaskService {
         if (Objects.isNull(taskId) || !StringUtils.hasText(workerId)) {
             throw WorkflowTaskException.of(BizErrorCode.PARAM_INVALID);
         }
-        WorkflowTask task = workflowTaskRepository.getWorkflowTaskById(taskId);
+        WorkflowTask task = workflowTaskRepository.findById(taskId);
         if (Objects.isNull(task)) {
             throw WorkflowTaskException.of(BizErrorCode.TASK_NOT_FOUND);
         }
@@ -146,7 +146,7 @@ public class WorkflowTaskServiceImpl implements WorkflowTaskService {
         if (Objects.isNull(taskId) || !StringUtils.hasText(workerId) || !StringUtils.hasText(autoResult)) {
             throw WorkflowTaskException.of(BizErrorCode.PARAM_INVALID);
         }
-        WorkflowTask task = workflowTaskRepository.getWorkflowTaskById(taskId);
+        WorkflowTask task = workflowTaskRepository.findById(taskId);
         if (Objects.isNull(task)) {
             throw WorkflowTaskException.of(BizErrorCode.TASK_NOT_FOUND);
         }
@@ -170,7 +170,7 @@ public class WorkflowTaskServiceImpl implements WorkflowTaskService {
         if (Objects.isNull(taskId) || !StringUtils.hasText(reviewerId) || !StringUtils.hasText(manualResult)) {
             throw WorkflowTaskException.of(BizErrorCode.PARAM_INVALID);
         }
-        WorkflowTask workflowTaskById = workflowTaskRepository.getWorkflowTaskById(taskId);
+        WorkflowTask workflowTaskById = workflowTaskRepository.findById(taskId);
         if (Objects.isNull(workflowTaskById)) {
             throw WorkflowTaskException.of(BizErrorCode.TASK_NOT_FOUND);
         }

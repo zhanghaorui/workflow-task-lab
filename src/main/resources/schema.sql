@@ -19,3 +19,6 @@ CREATE TABLE IF NOT EXISTS workflow_task
     started_at    TIMESTAMP,
     finished_at   TIMESTAMP
 );
+
+-- 业务幂等键唯一索引，防止重复创建任务，同时加速 bizKey 查询
+CREATE UNIQUE INDEX IF NOT EXISTS uidx_workflow_task_biz_key ON workflow_task (biz_key);
