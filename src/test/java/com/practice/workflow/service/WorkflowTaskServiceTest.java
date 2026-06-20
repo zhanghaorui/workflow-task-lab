@@ -52,10 +52,12 @@ class WorkflowTaskServiceTest {
         boolean started = workflowTaskService.tryStartTask(task.getId(), workerId);
 
         assertTrue(started);
-        assertEquals(WorkflowTaskStatus.PROCESSING, task.getStatus());
-        assertEquals(workerId, task.getWorkerId());
+        // 重新查询数据库获取最新状态
+        WorkflowTask startedTask = workflowTaskService.createTask(PROJECT_ID, BIZ_TYPE, task.getBizId(), SOURCE_ID);
+        assertEquals(WorkflowTaskStatus.PROCESSING, startedTask.getStatus());
+        assertEquals(workerId, startedTask.getWorkerId());
 
-        return task;
+        return startedTask;
     }
 
     private WorkflowTask createStartedAndAutoFinishedTask(String workerId) {
@@ -65,10 +67,12 @@ class WorkflowTaskServiceTest {
                 workflowTaskService.finishAutoProcess(task.getId(), workerId, "auto-result")
         );
 
-        assertEquals(WorkflowTaskStatus.WAIT_MANUAL_REVIEW, task.getStatus());
-        assertEquals("auto-result", task.getAutoResult());
+        // 重新查询数据库获取最新状态
+        WorkflowTask finishedTask = workflowTaskService.createTask(PROJECT_ID, BIZ_TYPE, task.getBizId(), SOURCE_ID);
+        assertEquals(WorkflowTaskStatus.WAIT_MANUAL_REVIEW, finishedTask.getStatus());
+        assertEquals("auto-result", finishedTask.getAutoResult());
 
-        return task;
+        return finishedTask;
     }
 
     @Nested
@@ -166,10 +170,12 @@ class WorkflowTaskServiceTest {
             boolean started = workflowTaskService.tryStartTask(task.getId(), "worker-1");
 
             assertTrue(started);
-            assertEquals(WorkflowTaskStatus.PROCESSING, task.getStatus());
-            assertEquals("worker-1", task.getWorkerId());
-            assertNotNull(task.getStartedAt());
-            assertNotNull(task.getUpdatedAt());
+            // 重新查询数据库获取最新状态
+            WorkflowTask startedTask = workflowTaskService.createTask(PROJECT_ID, BIZ_TYPE, task.getBizId(), SOURCE_ID);
+            assertEquals(WorkflowTaskStatus.PROCESSING, startedTask.getStatus());
+            assertEquals("worker-1", startedTask.getWorkerId());
+            assertNotNull(startedTask.getStartedAt());
+            assertNotNull(startedTask.getUpdatedAt());
         }
 
         @Test
@@ -185,27 +191,40 @@ class WorkflowTaskServiceTest {
 
         @Test
         void shouldReturnFalseWhenTaskStatusIsFailed() {
-            WorkflowTask task = createNewTask();
-            task.setStatus(WorkflowTaskStatus.FAILED);
+            WorkflowTask task = createAndStartTask("worker-1");
+            // 通过 failTask 让任务失败达到 maxRetry，状态变为 FAILED
+            workflowTaskService.failTask(task.getId(), "worker-1", "error1");
+            assertTrue(workflowTaskService.tryStartTask(task.getId(), "worker-1"));
+            workflowTaskService.failTask(task.getId(), "worker-1", "error2");
+            assertTrue(workflowTaskService.tryStartTask(task.getId(), "worker-1"));
+            workflowTaskService.failTask(task.getId(), "worker-1", "error3");
+            
+            // 此时任务状态应为 FAILED
+            WorkflowTask failedTask = workflowTaskService.createTask(PROJECT_ID, BIZ_TYPE, task.getBizId(), SOURCE_ID);
+            assertEquals(WorkflowTaskStatus.FAILED, failedTask.getStatus());
 
-            boolean started = workflowTaskService.tryStartTask(task.getId(), "worker-1");
-
+            // 再次尝试启动，应返回 false
+            boolean started = workflowTaskService.tryStartTask(failedTask.getId(), "worker-2");
             assertFalse(started);
-            assertEquals(WorkflowTaskStatus.FAILED, task.getStatus());
-            assertNull(task.getWorkerId());
         }
 
         @Test
         void shouldReturnFalseWhenRetryExceeded() {
-            WorkflowTask task = createNewTask();
-            task.setStatus(WorkflowTaskStatus.AUTO_PROCESS_FAILED);
-            task.setRetryCount(task.getMaxRetry());
+            WorkflowTask task = createAndStartTask("worker-1");
+            // 通过 failTask 让任务失败达到 maxRetry
+            workflowTaskService.failTask(task.getId(), "worker-1", "error1");
+            assertTrue(workflowTaskService.tryStartTask(task.getId(), "worker-1"));
+            workflowTaskService.failTask(task.getId(), "worker-1", "error2");
+            assertTrue(workflowTaskService.tryStartTask(task.getId(), "worker-1"));
+            workflowTaskService.failTask(task.getId(), "worker-1", "error3");
+            
+            // 此时任务状态应为 FAILED
+            WorkflowTask failedTask = workflowTaskService.createTask(PROJECT_ID, BIZ_TYPE, task.getBizId(), SOURCE_ID);
+            assertEquals(WorkflowTaskStatus.FAILED, failedTask.getStatus());
 
-            boolean started = workflowTaskService.tryStartTask(task.getId(), "worker-1");
-
+            // 再次尝试启动，应返回 false
+            boolean started = workflowTaskService.tryStartTask(failedTask.getId(), "worker-2");
             assertFalse(started);
-            assertEquals(WorkflowTaskStatus.AUTO_PROCESS_FAILED, task.getStatus());
-            assertNull(task.getWorkerId());
         }
     }
 
@@ -220,15 +239,17 @@ class WorkflowTaskServiceTest {
                     workflowTaskService.finishAutoProcess(task.getId(), "worker-1", "auto-result")
             );
 
-            assertEquals(WorkflowTaskStatus.WAIT_MANUAL_REVIEW, task.getStatus());
-            assertEquals("auto-result", task.getAutoResult());
+            // 重新查询数据库获取最新状态
+            WorkflowTask finishedTask = workflowTaskService.createTask(PROJECT_ID, BIZ_TYPE, task.getBizId(), SOURCE_ID);
+            assertEquals(WorkflowTaskStatus.WAIT_MANUAL_REVIEW, finishedTask.getStatus());
+            assertEquals("auto-result", finishedTask.getAutoResult());
 
-            assertNull(task.getFinalResult());
-            assertNull(task.getManualResult());
+            assertNull(finishedTask.getFinalResult());
+            assertNull(finishedTask.getManualResult());
 
             // 这里是关键：
             // 自动处理完成不代表任务完成，所以 finishedAt 应该还是 null。
-            assertNull(task.getFinishedAt());
+            assertNull(finishedTask.getFinishedAt());
         }
 
         @Test
@@ -240,23 +261,28 @@ class WorkflowTaskServiceTest {
                     () -> workflowTaskService.finishAutoProcess(task.getId(), "worker-2", "auto-result")
             );
             assertEquals(BizErrorCode.TASK_WORKER_MISMATCH.getCode(), exception.getErrorCode());
-            assertEquals(WorkflowTaskStatus.PROCESSING, task.getStatus());
-            assertNull(task.getAutoResult());
-            assertNull(task.getFinalResult());
+            // 重新查询数据库获取最新状态
+            WorkflowTask currentTask = workflowTaskService.createTask(PROJECT_ID, BIZ_TYPE, task.getBizId(), SOURCE_ID);
+            assertEquals(WorkflowTaskStatus.PROCESSING, currentTask.getStatus());
+            assertNull(currentTask.getAutoResult());
+            assertNull(currentTask.getFinalResult());
         }
 
         @Test
         void shouldThrowWhenTaskIsNotProcessing() {
             WorkflowTask task = createNewTask();
 
-            assertThrows(
+            WorkflowTaskException exception = assertThrows(
                     WorkflowTaskException.class,
                     () -> workflowTaskService.finishAutoProcess(task.getId(), "worker-1", "auto-result")
             );
+            assertEquals(BizErrorCode.TASK_STATUS_ILLEGAL.getCode(), exception.getErrorCode());
 
-            assertEquals(WorkflowTaskStatus.WAITING, task.getStatus());
-            assertNull(task.getAutoResult());
-            assertNull(task.getFinalResult());
+            // 重新查询数据库获取最新状态
+            WorkflowTask currentTask = workflowTaskService.createTask(PROJECT_ID, BIZ_TYPE, task.getBizId(), SOURCE_ID);
+            assertEquals(WorkflowTaskStatus.WAITING, currentTask.getStatus());
+            assertNull(currentTask.getAutoResult());
+            assertNull(currentTask.getFinalResult());
         }
     }
 
@@ -271,12 +297,14 @@ class WorkflowTaskServiceTest {
                     workflowTaskService.reviewTask(task.getId(), "reviewer-1", true, "manual-confirmed-result")
             );
 
-            assertEquals(WorkflowTaskStatus.REVIEW_CONFIRMED, task.getStatus());
-            assertEquals("manual-confirmed-result", task.getManualResult());
-            assertEquals("manual-confirmed-result", task.getFinalResult());
+            // 重新查询数据库获取最新状态
+            WorkflowTask reviewedTask = workflowTaskService.createTask(PROJECT_ID, BIZ_TYPE, task.getBizId(), SOURCE_ID);
+            assertEquals(WorkflowTaskStatus.REVIEW_CONFIRMED, reviewedTask.getStatus());
+            assertEquals("manual-confirmed-result", reviewedTask.getManualResult());
+            assertEquals("manual-confirmed-result", reviewedTask.getFinalResult());
 
-            assertNotNull(task.getFinishedAt());
-            assertNotNull(task.getUpdatedAt());
+            assertNotNull(reviewedTask.getFinishedAt());
+            assertNotNull(reviewedTask.getUpdatedAt());
         }
 
         @Test
@@ -287,26 +315,31 @@ class WorkflowTaskServiceTest {
                     workflowTaskService.reviewTask(task.getId(), "reviewer-1", false, "manual-rejected-result")
             );
 
-            assertEquals(WorkflowTaskStatus.REVIEW_REJECTED, task.getStatus());
-            assertEquals("manual-rejected-result", task.getManualResult());
-            assertEquals("manual-rejected-result", task.getFinalResult());
+            // 重新查询数据库获取最新状态
+            WorkflowTask reviewedTask = workflowTaskService.createTask(PROJECT_ID, BIZ_TYPE, task.getBizId(), SOURCE_ID);
+            assertEquals(WorkflowTaskStatus.REVIEW_REJECTED, reviewedTask.getStatus());
+            assertEquals("manual-rejected-result", reviewedTask.getManualResult());
+            assertEquals("manual-rejected-result", reviewedTask.getFinalResult());
 
-            assertNotNull(task.getFinishedAt());
-            assertNotNull(task.getUpdatedAt());
+            assertNotNull(reviewedTask.getFinishedAt());
+            assertNotNull(reviewedTask.getUpdatedAt());
         }
 
         @Test
         void shouldThrowWhenTaskIsNotWaitManualReview() {
             WorkflowTask task = createAndStartTask("worker-1");
 
-            assertThrows(
+            WorkflowTaskException exception = assertThrows(
                     WorkflowTaskException.class,
                     () -> workflowTaskService.reviewTask(task.getId(), "reviewer-1", true, "manual-result")
             );
+            assertEquals(BizErrorCode.TASK_STATUS_ILLEGAL.getCode(), exception.getErrorCode());
 
-            assertEquals(WorkflowTaskStatus.PROCESSING, task.getStatus());
-            assertNull(task.getManualResult());
-            assertNull(task.getFinalResult());
+            // 重新查询数据库获取最新状态
+            WorkflowTask currentTask = workflowTaskService.createTask(PROJECT_ID, BIZ_TYPE, task.getBizId(), SOURCE_ID);
+            assertEquals(WorkflowTaskStatus.PROCESSING, currentTask.getStatus());
+            assertNull(currentTask.getManualResult());
+            assertNull(currentTask.getFinalResult());
         }
     }
 
@@ -321,69 +354,75 @@ class WorkflowTaskServiceTest {
                     workflowTaskService.failTask(task.getId(), "worker-1", "first error")
             );
 
-            assertEquals(WorkflowTaskStatus.AUTO_PROCESS_FAILED, task.getStatus());
-            assertEquals(1, task.getRetryCount());
-            assertEquals("first error", task.getErrorMessage());
+            // 重新查询数据库获取最新状态
+            WorkflowTask failedTask = workflowTaskService.createTask(PROJECT_ID, BIZ_TYPE, task.getBizId(), SOURCE_ID);
+            assertEquals(WorkflowTaskStatus.AUTO_PROCESS_FAILED, failedTask.getStatus());
+            assertEquals(1, failedTask.getRetryCount());
+            assertEquals("first error", failedTask.getErrorMessage());
 
-            assertNull(task.getFinishedAt());
+            assertNull(failedTask.getFinishedAt());
         }
 
         @Test
         void shouldMoveToFailedWhenRetryExceeded() {
             WorkflowTask task = createAndStartTask("worker-1");
 
-            assertDoesNotThrow(() ->
-                    workflowTaskService.failTask(task.getId(), "worker-1", "first error")
-            );
-            assertEquals(WorkflowTaskStatus.AUTO_PROCESS_FAILED, task.getStatus());
+            workflowTaskService.failTask(task.getId(), "worker-1", "first error");
+            WorkflowTask task1 = workflowTaskService.createTask(PROJECT_ID, BIZ_TYPE, task.getBizId(), SOURCE_ID);
+            assertEquals(WorkflowTaskStatus.AUTO_PROCESS_FAILED, task1.getStatus());
 
             assertTrue(workflowTaskService.tryStartTask(task.getId(), "worker-1"));
-            assertDoesNotThrow(() ->
-                    workflowTaskService.failTask(task.getId(), "worker-1", "second error")
-            );
-            assertEquals(WorkflowTaskStatus.AUTO_PROCESS_FAILED, task.getStatus());
+            workflowTaskService.failTask(task.getId(), "worker-1", "second error");
+            WorkflowTask task2 = workflowTaskService.createTask(PROJECT_ID, BIZ_TYPE, task.getBizId(), SOURCE_ID);
+            assertEquals(WorkflowTaskStatus.AUTO_PROCESS_FAILED, task2.getStatus());
 
             assertTrue(workflowTaskService.tryStartTask(task.getId(), "worker-1"));
 
             // 第三次失败达到 maxRetry，进入 FAILED。
-            // 这里根据你的设计，如果你认为达到上限应该抛异常，
-            // 就把 assertDoesNotThrow 改成 assertThrows。
             assertDoesNotThrow(() ->
                     workflowTaskService.failTask(task.getId(), "worker-1", "third error")
             );
 
-            assertEquals(WorkflowTaskStatus.FAILED, task.getStatus());
-            assertEquals(3, task.getRetryCount());
-            assertEquals("third error", task.getErrorMessage());
-            assertNotNull(task.getFinishedAt());
+            // 重新查询数据库获取最新状态
+            WorkflowTask finalTask = workflowTaskService.createTask(PROJECT_ID, BIZ_TYPE, task.getBizId(), SOURCE_ID);
+            assertEquals(WorkflowTaskStatus.FAILED, finalTask.getStatus());
+            assertEquals(3, finalTask.getRetryCount());
+            assertEquals("third error", finalTask.getErrorMessage());
+            assertNotNull(finalTask.getFinishedAt());
         }
 
         @Test
         void shouldThrowWhenWorkerMismatch() {
             WorkflowTask task = createAndStartTask("worker-1");
 
-            assertThrows(
+            WorkflowTaskException exception = assertThrows(
                     WorkflowTaskException.class,
                     () -> workflowTaskService.failTask(task.getId(), "worker-2", "error")
             );
+            assertEquals(BizErrorCode.TASK_WORKER_MISMATCH.getCode(), exception.getErrorCode());
 
-            assertEquals(WorkflowTaskStatus.PROCESSING, task.getStatus());
-            assertEquals(0, task.getRetryCount());
-            assertNull(task.getErrorMessage());
+            // 重新查询数据库获取最新状态
+            WorkflowTask currentTask = workflowTaskService.createTask(PROJECT_ID, BIZ_TYPE, task.getBizId(), SOURCE_ID);
+            assertEquals(WorkflowTaskStatus.PROCESSING, currentTask.getStatus());
+            assertEquals(0, currentTask.getRetryCount());
+            assertNull(currentTask.getErrorMessage());
         }
 
         @Test
         void shouldThrowWhenTaskIsNotProcessing() {
             WorkflowTask task = createNewTask();
 
-            assertThrows(
+            WorkflowTaskException exception = assertThrows(
                     WorkflowTaskException.class,
                     () -> workflowTaskService.failTask(task.getId(), "worker-1", "error")
             );
+            assertEquals(BizErrorCode.TASK_STATUS_ILLEGAL.getCode(), exception.getErrorCode());
 
-            assertEquals(WorkflowTaskStatus.WAITING, task.getStatus());
-            assertEquals(0, task.getRetryCount());
-            assertNull(task.getErrorMessage());
+            // 重新查询数据库获取最新状态
+            WorkflowTask currentTask = workflowTaskService.createTask(PROJECT_ID, BIZ_TYPE, task.getBizId(), SOURCE_ID);
+            assertEquals(WorkflowTaskStatus.WAITING, currentTask.getStatus());
+            assertEquals(0, currentTask.getRetryCount());
+            assertNull(currentTask.getErrorMessage());
         }
     }
 }

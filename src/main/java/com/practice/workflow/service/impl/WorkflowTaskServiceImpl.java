@@ -8,6 +8,7 @@ import com.practice.workflow.repository.WorkflowTaskRepository;
 import com.practice.workflow.service.WorkflowTaskService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -72,8 +73,19 @@ public class WorkflowTaskServiceImpl implements WorkflowTaskService {
         workflowTask.setRetryCount(0);
         workflowTask.setCreatedAt(LocalDateTime.now());
         workflowTask.setUpdatedAt(LocalDateTime.now());
-        long id = workflowTaskRepository.insertWorkFlowTask(workflowTask);
-        workflowTask.setId(id);
+        long id;
+        try {
+            id = workflowTaskRepository.insertWorkFlowTask(workflowTask);
+            workflowTask.setId(id);
+        } catch (DuplicateKeyException e) {
+            log.info("检测到唯一索引冲突，查询一次");
+            workflowTask = workflowTaskRepository.findByBizKey(bizKey);
+            if (!Objects.isNull(workflowTask)) {
+                return workflowTask;
+            } else {
+                throw e;
+            }
+        }
         return workflowTask;
     }
 
@@ -87,58 +99,51 @@ public class WorkflowTaskServiceImpl implements WorkflowTaskService {
             throw WorkflowTaskException.of(BizErrorCode.TASK_NOT_FOUND);
         }
         synchronized (task) {
-            WorkflowTaskStatus status = task.getStatus();
-
-            if (!Objects.equals(status, WorkflowTaskStatus.WAITING) && !Objects.equals(status, WorkflowTaskStatus.AUTO_PROCESS_FAILED)) {
-                return false;
-            }
-
-            if (task.getRetryCount() >= task.getMaxRetry()) {
-                return false;
-            }
-
             LocalDateTime now = LocalDateTime.now();
-            task.setStatus(WorkflowTaskStatus.PROCESSING);
             task.setWorkerId(workerId);
             task.setStartedAt(now);
             task.setUpdatedAt(now);
-            return true;
+            int i = workflowTaskRepository.tryStartTask(task);
+            return i > 0;
         }
     }
 
+    /**
+     * 标记任务失败
+     * <p>
+     * 条件：任务状态为 PROCESSING 且 workerId 匹配
+     * 失败后 retryCount + 1：
+     * - 如果新的 retryCount < maxRetry：status = AUTO_PROCESS_FAILED
+     * - 如果新的 retryCount >= maxRetry：status = FAILED，设置 finishedAt
+     *
+     * @param taskId       任务 ID
+     * @param workerId     当前持有者 ID
+     * @param errorMessage 错误信息
+     */
     @Override
     public void failTask(Long taskId, String workerId, String errorMessage) {
         if (Objects.isNull(taskId) || !StringUtils.hasText(workerId)) {
             throw WorkflowTaskException.of(BizErrorCode.PARAM_INVALID);
         }
-        WorkflowTask task = workflowTaskRepository.findById(taskId);
-        if (Objects.isNull(task)) {
-            throw WorkflowTaskException.of(BizErrorCode.TASK_NOT_FOUND);
-        }
-        synchronized (task) {
-            if (Objects.equals(WorkflowTaskStatus.PROCESSING, task.getStatus())) {
-                if (Objects.equals(task.getWorkerId(), workerId)) {
-                    int retryCount = task.getRetryCount();
-                    if ((retryCount + 1) < task.getMaxRetry()) {
-                        task.setStatus(WorkflowTaskStatus.AUTO_PROCESS_FAILED);
-                        task.setRetryCount(retryCount + 1);
-                        task.setUpdatedAt(LocalDateTime.now());
-                        task.setErrorMessage(errorMessage);
-                    } else {
-                        task.setStatus(WorkflowTaskStatus.FAILED);
-                        task.setUpdatedAt(LocalDateTime.now());
-                        task.setRetryCount(retryCount + 1);
-                        task.setErrorMessage(errorMessage);
-                        task.setFinishedAt(LocalDateTime.now());
-                    }
-                } else {
-                    throw WorkflowTaskException.of(BizErrorCode.TASK_WORKER_MISMATCH);
-                }
-            } else {
+
+        LocalDateTime now = LocalDateTime.now();
+        int affectedRows = workflowTaskRepository.failTask(taskId, workerId, errorMessage, now, now);
+
+        if (affectedRows == 0) {
+            // 更新失败，可能是状态不正确或 workerId 不匹配
+            WorkflowTask task = workflowTaskRepository.findById(taskId);
+            if (Objects.isNull(task)) {
+                throw WorkflowTaskException.of(BizErrorCode.TASK_NOT_FOUND);
+            }
+            if (!Objects.equals(WorkflowTaskStatus.PROCESSING, task.getStatus())) {
                 throw WorkflowTaskException.of(BizErrorCode.TASK_STATUS_ILLEGAL);
             }
+            if (!Objects.equals(task.getWorkerId(), workerId)) {
+                throw WorkflowTaskException.of(BizErrorCode.TASK_WORKER_MISMATCH);
+            }
+            // 如果状态和 workerId 都正确但更新失败，抛出异常
+            throw new IllegalStateException("任务更新失败，请重试");
         }
-
     }
 
     @Override
@@ -146,22 +151,27 @@ public class WorkflowTaskServiceImpl implements WorkflowTaskService {
         if (Objects.isNull(taskId) || !StringUtils.hasText(workerId) || !StringUtils.hasText(autoResult)) {
             throw WorkflowTaskException.of(BizErrorCode.PARAM_INVALID);
         }
+
         WorkflowTask task = workflowTaskRepository.findById(taskId);
         if (Objects.isNull(task)) {
             throw WorkflowTaskException.of(BizErrorCode.TASK_NOT_FOUND);
         }
-        synchronized (task) {
-            if (Objects.equals(workerId, task.getWorkerId())) {
-                if (Objects.equals(task.getStatus(), WorkflowTaskStatus.PROCESSING)) {
-                    task.setStatus(WorkflowTaskStatus.WAIT_MANUAL_REVIEW);
-                    task.setAutoResult(autoResult);
-                    task.setUpdatedAt(LocalDateTime.now());
-                } else {
-                    throw WorkflowTaskException.of(BizErrorCode.TASK_STATUS_ILLEGAL);
-                }
-            } else {
+
+        LocalDateTime now = LocalDateTime.now();
+        int affectedRows = workflowTaskRepository.finishAutoProcess(taskId, workerId, autoResult, now);
+        if (affectedRows == 0) {
+            // 更新失败，检查原因
+            WorkflowTask currentTask = workflowTaskRepository.findById(taskId);
+            if (Objects.isNull(currentTask)) {
+                throw WorkflowTaskException.of(BizErrorCode.TASK_NOT_FOUND);
+            }
+            if (!Objects.equals(WorkflowTaskStatus.PROCESSING, currentTask.getStatus())) {
+                throw WorkflowTaskException.of(BizErrorCode.TASK_STATUS_ILLEGAL);
+            }
+            if (!Objects.equals(currentTask.getWorkerId(), workerId)) {
                 throw WorkflowTaskException.of(BizErrorCode.TASK_WORKER_MISMATCH);
             }
+            throw new IllegalStateException("任务更新失败，请重试");
         }
     }
 
@@ -170,28 +180,37 @@ public class WorkflowTaskServiceImpl implements WorkflowTaskService {
         if (Objects.isNull(taskId) || !StringUtils.hasText(reviewerId) || !StringUtils.hasText(manualResult)) {
             throw WorkflowTaskException.of(BizErrorCode.PARAM_INVALID);
         }
-        WorkflowTask workflowTaskById = workflowTaskRepository.findById(taskId);
-        if (Objects.isNull(workflowTaskById)) {
+
+        WorkflowTask task = workflowTaskRepository.findById(taskId);
+        if (Objects.isNull(task)) {
             throw WorkflowTaskException.of(BizErrorCode.TASK_NOT_FOUND);
         }
-        synchronized (workflowTaskById) {
-            if (Objects.equals(workflowTaskById.getStatus(), WorkflowTaskStatus.WAIT_MANUAL_REVIEW)) {
-                workflowTaskById.setFinishedAt(LocalDateTime.now());
-                workflowTaskById.setManualResult(manualResult);
-                workflowTaskById.setFinalResult(manualResult);
-                workflowTaskById.setUpdatedAt(LocalDateTime.now());
-                workflowTaskById.setStatus(approved ? WorkflowTaskStatus.REVIEW_CONFIRMED : WorkflowTaskStatus.REVIEW_REJECTED);
-            } else {
-                throw WorkflowTaskException.of(BizErrorCode.TASK_STATUS_ILLEGAL);
+
+        LocalDateTime now = LocalDateTime.now();
+        task.setFinishedAt(now);
+        task.setManualResult(manualResult);
+        task.setFinalResult(manualResult);
+        task.setUpdatedAt(now);
+        task.setStatus(approved ? WorkflowTaskStatus.REVIEW_CONFIRMED : WorkflowTaskStatus.REVIEW_REJECTED);
+
+        synchronized (task) {
+            int affectedRows = workflowTaskRepository.reviewTask(task);
+            if (affectedRows == 0) {
+                // 更新失败，检查原因
+                WorkflowTask currentTask = workflowTaskRepository.findById(taskId);
+                if (Objects.isNull(currentTask)) {
+                    throw WorkflowTaskException.of(BizErrorCode.TASK_NOT_FOUND);
+                }
+                if (!Objects.equals(WorkflowTaskStatus.WAIT_MANUAL_REVIEW, currentTask.getStatus())) {
+                    throw WorkflowTaskException.of(BizErrorCode.TASK_STATUS_ILLEGAL);
+                }
+                throw new IllegalStateException("任务更新失败，请重试");
             }
         }
     }
 
-
     private static String assembleBizKey(Long projectId, String bizType, String bizId, String sourceId) {
         return TASK_KEY + projectId.toString() + COLON + bizType + COLON + bizId + COLON + sourceId;
     }
-
-
 }
 

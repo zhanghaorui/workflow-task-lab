@@ -14,6 +14,7 @@ import org.springframework.stereotype.Repository;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.LocalDateTime;
 import java.util.Objects;
 
 /**
@@ -65,35 +66,93 @@ public class WorkflowTaskRepository {
     public WorkflowTask findById(Long id) {
         String sql = "SELECT * FROM workflow_task WHERE id = :id";
         MapSqlParameterSource params = new MapSqlParameterSource("id", id);
-        return namedParameterJdbcTemplate.queryForObject(sql, params, ROW_MAPPER);
+        return namedParameterJdbcTemplate.query(sql, params, ROW_MAPPER)
+                .stream()
+                .findFirst()
+                .orElse(null);
     }
 
     public WorkflowTask findByBizKey(String bizKey) {
         String sql = "SELECT * FROM workflow_task WHERE biz_key = :bizKey";
         MapSqlParameterSource params = new MapSqlParameterSource("bizKey", bizKey);
-        return namedParameterJdbcTemplate.queryForObject(sql, params, ROW_MAPPER);
+        return namedParameterJdbcTemplate.query(sql, params, ROW_MAPPER)
+                .stream()
+                .findFirst()
+                .orElse(null);
     }
 
 
     public int tryStartTask(WorkflowTask workflowTask) {
-        String sql = "UPDATE workflow_task set status = :status, worker_id =:workerId, started_at=:startedAt, updated_at=:updatedAt  where id=:id";
+        String sql = "UPDATE workflow_task set status = :status, worker_id =:workerId, started_at=:startedAt, updated_at=:updatedAt  where id=:id and status in ('WAITING', 'AUTO_PROCESS_FAILED')\n" +
+                "  and retry_count < max_retry";
         MapSqlParameterSource params = new MapSqlParameterSource()
                 .addValue("status", WorkflowTaskStatus.PROCESSING.name())
                 .addValue("workerId", workflowTask.getWorkerId())
                 .addValue("startedAt", workflowTask.getStartedAt())
                 .addValue("updatedAt", workflowTask.getUpdatedAt())
                 .addValue("id", workflowTask.getId());
-        return namedParameterJdbcTemplate.update(sql, params);
+        int update = namedParameterJdbcTemplate.update(sql, params);
+        return update;
     }
 
 
-    public int markAutoProcessFailed(WorkflowTask workflowTask) {
-        String sql = "UPDATE workflow_task set status = :status, worker_id =:workerId, started_at=:startedAt, updated_at=:updatedAt  where id=:id";
+    /**
+     * 标记任务失败（合并 AUTO_PROCESS_FAILED 和 FAILED 逻辑）
+     * <p>
+     * 条件：status = PROCESSING 且 worker_id 匹配
+     * 逻辑：
+     * - retry_count + 1
+     * - 如果新的 retry_count >= max_retry：status = FAILED, 设置 finished_at
+     * - 否则：status = AUTO_PROCESS_FAILED, 不设置 finished_at
+     *
+     * @param taskId      任务 ID
+     * @param workerId    当前持有者 ID
+     * @param errorMessage 错误信息
+     * @param updatedAt   更新时间
+     * @param finishedAt  失败时间（仅当达到最大重试次数时使用）
+     * @return 影响行数，0 表示状态或 workerId 不匹配
+     */
+    public int failTask(Long taskId, String workerId, String errorMessage, LocalDateTime updatedAt, LocalDateTime finishedAt) {
+        String sql = "UPDATE workflow_task SET " +
+                "status = CASE WHEN retry_count + 1 >= max_retry THEN :statusFailed ELSE :statusAutoFailed END, " +
+                "retry_count = retry_count + 1, " +
+                "finished_at = CASE WHEN retry_count + 1 >= max_retry THEN :finishedAt ELSE finished_at END, " +
+                "updated_at = :updatedAt, " +
+                "error_message = :errorMessage " +
+                "WHERE id = :id AND status = :statusProcessing AND worker_id = :workerId";
+
         MapSqlParameterSource params = new MapSqlParameterSource()
-                .addValue("status", WorkflowTaskStatus.AUTO_PROCESS_FAILED.name())
-                .addValue("workerId", workflowTask.getWorkerId())
-                .addValue("startedAt", workflowTask.getStartedAt())
+                .addValue("statusFailed", WorkflowTaskStatus.FAILED.name())
+                .addValue("statusAutoFailed", WorkflowTaskStatus.AUTO_PROCESS_FAILED.name())
+                .addValue("statusProcessing", WorkflowTaskStatus.PROCESSING.name())
+                .addValue("finishedAt", finishedAt)
+                .addValue("updatedAt", updatedAt)
+                .addValue("errorMessage", errorMessage)
+                .addValue("id", taskId)
+                .addValue("workerId", workerId);
+
+        return namedParameterJdbcTemplate.update(sql, params);
+    }
+
+    public int finishAutoProcess(Long taskId, String workerId, String autoResult, LocalDateTime updatedAt) {
+        String sql = "UPDATE workflow_task set status = :status,  updated_at=:updatedAt, auto_result=:autoResult  where id=:id and worker_id = :workerId   and status = 'PROCESSING'";
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("status", WorkflowTaskStatus.WAIT_MANUAL_REVIEW.name())
+                .addValue("updatedAt", updatedAt)
+                .addValue("autoResult", autoResult)
+                .addValue("id", taskId)
+                .addValue("workerId", workerId);
+        return namedParameterJdbcTemplate.update(sql, params);
+    }
+
+    public int reviewTask(WorkflowTask workflowTask) {
+        String sql = "UPDATE workflow_task set status = :status,  updated_at=:updatedAt, finished_at=:finishedAt, manual_result = :manualResult, final_result = :finalResult  where id=:id and status = 'WAIT_MANUAL_REVIEW'";
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("status", workflowTask.getStatus().name())
                 .addValue("updatedAt", workflowTask.getUpdatedAt())
+                .addValue("finishedAt", workflowTask.getFinishedAt())
+                .addValue("manualResult", workflowTask.getManualResult())
+                .addValue("finalResult", workflowTask.getFinalResult())
                 .addValue("id", workflowTask.getId());
         return namedParameterJdbcTemplate.update(sql, params);
     }
