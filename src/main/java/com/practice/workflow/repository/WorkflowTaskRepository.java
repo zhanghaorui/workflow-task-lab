@@ -2,8 +2,6 @@ package com.practice.workflow.repository;
 
 import com.practice.workflow.common.enums.WorkflowTaskStatus;
 import com.practice.workflow.domain.WorkflowTask;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -163,9 +161,8 @@ public class WorkflowTaskRepository {
  */
 class WorkFlowRowMapper implements RowMapper<WorkflowTask> {
 
-    @Nullable
     @Override
-    public WorkflowTask mapRow(@NotNull ResultSet rs, int rowNum) throws SQLException {
+    public WorkflowTask mapRow(ResultSet rs, int rowNum) throws SQLException {
         WorkflowTask task = new WorkflowTask();
         task.setId(rs.getLong("id"));
         task.setBizKey(rs.getString("biz_key"));

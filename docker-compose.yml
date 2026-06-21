@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: workflow-rabbitmq
+    hostname: rabbitmq
+    ports:
+      - "5672:5672"    # AMQP 协议端口
+      - "15672:15672"  # 管理界面端口
+    environment:
+      RABBITMQ_DEFAULT_USER: workflow
+      RABBITMQ_DEFAULT_PASS: workflow123
+      RABBITMQ_DEFAULT_VHOST: workflow_vhost
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmqctl", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+    networks:
+      - workflow-network
+
+volumes:
+  rabbitmq_data:
+    driver: local
+
+networks:
+  workflow-network:
+    driver: bridge
