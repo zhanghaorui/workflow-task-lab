@@ -37,3 +37,8 @@ spring:
           initial-interval: 1000
           multiplier: 2.0
           max-attempts: 3
+
+# Outbox 定时任务配置
+workflow:
+  outbox:
+    cron: "0/2 * * * * ?"  # 每2秒执行一次

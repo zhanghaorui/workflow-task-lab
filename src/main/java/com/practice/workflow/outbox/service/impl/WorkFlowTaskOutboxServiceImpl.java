@@ -1,8 +1,8 @@
 package com.practice.workflow.outbox.service.impl;
 
 import com.alibaba.fastjson2.JSONObject;
+import com.practice.workflow.messaging.message.WorkflowTaskEventType;
 import com.practice.workflow.outbox.domain.WorkflowTaskOutbox;
-import com.practice.workflow.outbox.enums.OutboxEventType;
 import com.practice.workflow.outbox.enums.OutboxStatus;
 import com.practice.workflow.outbox.repository.WorkFlowTaskOutboxRepository;
 import com.practice.workflow.outbox.service.WorkFlowTaskOutboxService;
@@ -41,7 +41,7 @@ public class WorkFlowTaskOutboxServiceImpl implements WorkFlowTaskOutboxService 
         workflowTaskOutbox = new WorkflowTaskOutbox();
         workflowTaskOutbox.setTaskId(taskId);
         workflowTaskOutbox.setBizKey(bizKey);
-        workflowTaskOutbox.setEventType(OutboxEventType.AUTO_PROCESS_REQUESTED);
+        workflowTaskOutbox.setEventType(WorkflowTaskEventType.AUTO_PROCESS_REQUESTED);
         workflowTaskOutbox.setMessageKey(bizKey + ":" + (UUID.randomUUID()));
         workflowTaskOutbox.setPayload(this.buildPayload(workflowTaskOutbox));
         workflowTaskOutbox.setStatus(OutboxStatus.PENDING);
@@ -56,7 +56,7 @@ public class WorkFlowTaskOutboxServiceImpl implements WorkFlowTaskOutboxService 
         WorkflowTaskOutbox covert = new WorkflowTaskOutbox();
         covert.setTaskId(workflowTaskOutbox.getTaskId());
         covert.setBizKey(workflowTaskOutbox.getBizKey());
-        covert.setEventType(OutboxEventType.AUTO_PROCESS_REQUESTED);
+        covert.setEventType(WorkflowTaskEventType.AUTO_PROCESS_REQUESTED);
         return JSONObject.toJSONString(covert);
     }
 }

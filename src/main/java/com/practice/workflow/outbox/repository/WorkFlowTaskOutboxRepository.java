@@ -1,7 +1,7 @@
 package com.practice.workflow.outbox.repository;
 
+import com.practice.workflow.messaging.message.WorkflowTaskEventType;
 import com.practice.workflow.outbox.domain.WorkflowTaskOutbox;
-import com.practice.workflow.outbox.enums.OutboxEventType;
 import com.practice.workflow.outbox.enums.OutboxStatus;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.RowMapper;
@@ -13,6 +13,7 @@ import org.springframework.stereotype.Repository;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * <p>TODO</p>
@@ -65,6 +66,49 @@ public class WorkFlowTaskOutboxRepository {
                 .findFirst()
                 .orElse(null);
     }
+
+    public List<WorkflowTaskOutbox> findPendingOutBoxList() {
+        String sql = "SELECT * FROM workflow_event where status = 'PENDING'";
+        return namedParameterJdbcTemplate.query(sql, ROW_MAPPER);
+    }
+
+    public int markSent(WorkflowTaskOutbox item) {
+
+        String sql = "UPDATE workflow_event set status = 'SENT', sent_at=:sentAt, updated_at=:updatedAt where id=:id ";
+
+        return namedParameterJdbcTemplate.update(sql, new MapSqlParameterSource()
+                .addValue("sentAt", item.getSentAt())
+                .addValue("updatedAt", item.getUpdatedAt())
+                .addValue("id", item.getId())
+        );
+
+    }
+
+    /**
+     * 标记发送失败，增加重试次数
+     *
+     * <p>若 retry_count + 1 >= max_retry，则将状态置为 FAILED；
+     * 否则保持 PENDING 状态，等待下次重试。
+     *
+     * @param id        Outbox 记录 ID
+     * @param lastError 错误信息
+     * @param updatedAt 更新时间
+     * @return 影响行数
+     */
+    public int markFailed(Long id, String lastError, LocalDateTime updatedAt) {
+        String sql = "UPDATE workflow_event SET " +
+                "status = CASE WHEN retry_count + 1 >= max_retry THEN 'FAILED' ELSE 'PENDING' END, " +
+                "retry_count = retry_count + 1, " +
+                "last_error = :lastError, " +
+                "updated_at = :updatedAt " +
+                "WHERE id = :id";
+
+        return namedParameterJdbcTemplate.update(sql, new MapSqlParameterSource()
+                .addValue("lastError", lastError)
+                .addValue("updatedAt", updatedAt)
+                .addValue("id", id)
+        );
+    }
 }
 
 
@@ -77,7 +121,7 @@ class WorkFlowOutboxRowMapper implements RowMapper<WorkflowTaskOutbox> {
         workflowTaskOutbox.setTaskId(rs.getLong("task_id"));
         workflowTaskOutbox.setBizKey(rs.getString("biz_key"));
         workflowTaskOutbox.setMessageKey(rs.getString("message_key"));
-        workflowTaskOutbox.setEventType(OutboxEventType.valueOf(rs.getString("event_type")));
+        workflowTaskOutbox.setEventType(WorkflowTaskEventType.valueOf(rs.getString("event_type")));
         workflowTaskOutbox.setPayload(rs.getString("payload"));
         workflowTaskOutbox.setStatus(OutboxStatus.valueOf(rs.getString("status")));
         workflowTaskOutbox.setRetryCount(rs.getInt("retry_count"));

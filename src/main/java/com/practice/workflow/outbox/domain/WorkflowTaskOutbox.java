@@ -1,6 +1,6 @@
 package com.practice.workflow.outbox.domain;
 
-import com.practice.workflow.outbox.enums.OutboxEventType;
+import com.practice.workflow.messaging.message.WorkflowTaskEventType;
 import com.practice.workflow.outbox.enums.OutboxStatus;
 import lombok.Data;
 
@@ -44,7 +44,7 @@ public class WorkflowTaskOutbox {
      * 事件类型
      * <p>标识消息的业务含义，如 "TASK_CREATED"、"TASK_FINISHED"、"TASK_FAILED" 等。
      */
-    private OutboxEventType eventType;
+    private WorkflowTaskEventType eventType;
 
     /**
      * 消息内容（JSON 格式）
