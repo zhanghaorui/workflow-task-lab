@@ -98,14 +98,12 @@ public class WorkflowTaskServiceImpl implements WorkflowTaskService {
         if (Objects.isNull(task)) {
             throw WorkflowTaskException.of(BizErrorCode.TASK_NOT_FOUND);
         }
-        synchronized (task) {
-            LocalDateTime now = LocalDateTime.now();
-            task.setWorkerId(workerId);
-            task.setStartedAt(now);
-            task.setUpdatedAt(now);
-            int i = workflowTaskRepository.tryStartTask(task);
-            return i > 0;
-        }
+        LocalDateTime now = LocalDateTime.now();
+        task.setWorkerId(workerId);
+        task.setStartedAt(now);
+        task.setUpdatedAt(now);
+        int i = workflowTaskRepository.tryStartTask(task);
+        return i > 0;
     }
 
     /**
@@ -193,19 +191,17 @@ public class WorkflowTaskServiceImpl implements WorkflowTaskService {
         task.setUpdatedAt(now);
         task.setStatus(approved ? WorkflowTaskStatus.REVIEW_CONFIRMED : WorkflowTaskStatus.REVIEW_REJECTED);
 
-        synchronized (task) {
-            int affectedRows = workflowTaskRepository.reviewTask(task);
-            if (affectedRows == 0) {
-                // 更新失败，检查原因
-                WorkflowTask currentTask = workflowTaskRepository.findById(taskId);
-                if (Objects.isNull(currentTask)) {
-                    throw WorkflowTaskException.of(BizErrorCode.TASK_NOT_FOUND);
-                }
-                if (!Objects.equals(WorkflowTaskStatus.WAIT_MANUAL_REVIEW, currentTask.getStatus())) {
-                    throw WorkflowTaskException.of(BizErrorCode.TASK_STATUS_ILLEGAL);
-                }
-                throw new IllegalStateException("任务更新失败，请重试");
+        int affectedRows = workflowTaskRepository.reviewTask(task);
+        if (affectedRows == 0) {
+            // 更新失败，检查原因
+            WorkflowTask currentTask = workflowTaskRepository.findById(taskId);
+            if (Objects.isNull(currentTask)) {
+                throw WorkflowTaskException.of(BizErrorCode.TASK_NOT_FOUND);
             }
+            if (!Objects.equals(WorkflowTaskStatus.WAIT_MANUAL_REVIEW, currentTask.getStatus())) {
+                throw WorkflowTaskException.of(BizErrorCode.TASK_STATUS_ILLEGAL);
+            }
+            throw new IllegalStateException("任务更新失败，请重试");
         }
     }
 
