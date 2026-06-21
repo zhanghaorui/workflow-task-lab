@@ -4,12 +4,14 @@ import com.practice.workflow.common.enums.BizErrorCode;
 import com.practice.workflow.common.enums.WorkflowTaskStatus;
 import com.practice.workflow.common.exception.WorkflowTaskException;
 import com.practice.workflow.domain.WorkflowTask;
+import com.practice.workflow.outbox.service.WorkFlowTaskOutboxService;
 import com.practice.workflow.repository.WorkflowTaskRepository;
 import com.practice.workflow.service.WorkflowTaskService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
@@ -38,6 +40,9 @@ public class WorkflowTaskServiceImpl implements WorkflowTaskService {
     private WorkflowTaskRepository workflowTaskRepository;
 
 
+    @Autowired
+    private WorkFlowTaskOutboxService workFlowTaskOutboxService;
+
     /**
      * 根据 projectId + bizType + bizId + sourceId 生成 bizKey
      * 如果 bizKey 已存在，返回已有任务
@@ -53,6 +58,7 @@ public class WorkflowTaskServiceImpl implements WorkflowTaskService {
      * @return
      */
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public WorkflowTask createTask(Long projectId, String bizType, String bizId, String sourceId) {
         if (Objects.isNull(projectId) || !StringUtils.hasText(bizType) || !StringUtils.hasText(bizId) || !StringUtils.hasText(sourceId)) {
             throw WorkflowTaskException.of(BizErrorCode.PARAM_INVALID);
@@ -77,6 +83,7 @@ public class WorkflowTaskServiceImpl implements WorkflowTaskService {
         try {
             id = workflowTaskRepository.insertWorkFlowTask(workflowTask);
             workflowTask.setId(id);
+            workFlowTaskOutboxService.createWorkFlowTaskOutbox(id, bizKey);
         } catch (DuplicateKeyException e) {
             log.info("检测到唯一索引冲突，查询一次");
             workflowTask = workflowTaskRepository.findByBizKey(bizKey);
