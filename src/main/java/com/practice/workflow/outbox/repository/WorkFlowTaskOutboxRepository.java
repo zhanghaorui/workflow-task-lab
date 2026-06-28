@@ -39,7 +39,7 @@ public class WorkFlowTaskOutboxRepository {
     public void insertWorkFlowTaskOutbox(WorkflowTaskOutbox workflowTaskOutbox) {
 
         String sql = "insert into workflow_event (task_id, biz_key, event_type, message_key, payload, status, retry_count, max_retry, last_error, created_at, updated_at, sent_at) " +
-                "valus (:taskId, :bizKey, :eventType, :messageKey,:payload, :status, :retryCount, :maxRetry, :lastError, :createdAt, :updatedAt, :sentAt)";
+                "VALUES (:taskId, :bizKey, :eventType, :messageKey,:payload, :status, :retryCount, :maxRetry, :lastError, :createdAt, :updatedAt, :sentAt)";
 
         MapSqlParameterSource parameterSource = new MapSqlParameterSource()
                 .addValue("taskId", workflowTaskOutbox.getTaskId())
@@ -60,7 +60,7 @@ public class WorkFlowTaskOutboxRepository {
 
     public WorkflowTaskOutbox findOutboxByTaskId(Long taskId) {
         String sql = "SELECT * FROM workflow_event where task_id = :taskId";
-        MapSqlParameterSource parameterSource = new MapSqlParameterSource("task_id", taskId);
+        MapSqlParameterSource parameterSource = new MapSqlParameterSource("taskId", taskId);
         return namedParameterJdbcTemplate.query(sql, parameterSource, ROW_MAPPER)
                 .stream()
                 .findFirst()
@@ -68,7 +68,7 @@ public class WorkFlowTaskOutboxRepository {
     }
 
     public List<WorkflowTaskOutbox> findPendingOutBoxList() {
-        String sql = "SELECT * FROM workflow_event where status = 'PENDING'";
+        String sql = "SELECT * FROM workflow_event where status = 'PENDING' and retry_count < max_retry";
         return namedParameterJdbcTemplate.query(sql, ROW_MAPPER);
     }
 
