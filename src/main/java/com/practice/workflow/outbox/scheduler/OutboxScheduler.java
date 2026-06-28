@@ -1,6 +1,6 @@
 package com.practice.workflow.outbox.scheduler;
 
-import com.practice.workflow.messaging.message.WorkflowTaskEventType;
+import com.alibaba.fastjson2.JSONObject;
 import com.practice.workflow.messaging.message.WorkflowTaskMessage;
 import com.practice.workflow.messaging.publisher.WorkflowTaskMessagePublisher;
 import com.practice.workflow.outbox.domain.WorkflowTaskOutbox;
@@ -14,7 +14,6 @@ import org.springframework.util.CollectionUtils;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.UUID;
 
 /**
  * Outbox 消息发送定时任务
@@ -65,11 +64,7 @@ public class OutboxScheduler {
 
         outboxList.forEach(item -> {
             WorkflowTaskMessage workflowTaskMessage = new WorkflowTaskMessage();
-            workflowTaskMessage.setBizKey(item.getBizKey());
-            workflowTaskMessage.setEventType((item.getEventType()));
-            workflowTaskMessage.setTaskId(item.getTaskId());
-            workflowTaskMessage.setCreatedAt(LocalDateTime.now());
-            workflowTaskMessage.setTraceId(UUID.randomUUID().toString());
+            workflowTaskMessage = JSONObject.parseObject(item.getPayload(), WorkflowTaskMessage.class);
             try {
                 workflowTaskMessagePublisher.publishTaskMessage(workflowTaskMessage);
                 item.setSentAt(LocalDateTime.now());

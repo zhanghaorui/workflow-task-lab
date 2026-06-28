@@ -68,13 +68,13 @@ public class WorkFlowTaskOutboxRepository {
     }
 
     public List<WorkflowTaskOutbox> findPendingOutBoxList() {
-        String sql = "SELECT * FROM workflow_event where status = 'PENDING' and retry_count < max_retry";
+        String sql = "SELECT * FROM workflow_event where status = 'PENDING' and retry_count < max_retry order by created_at  limit 20";
         return namedParameterJdbcTemplate.query(sql, ROW_MAPPER);
     }
 
     public int markSent(WorkflowTaskOutbox item) {
 
-        String sql = "UPDATE workflow_event set status = 'SENT', sent_at=:sentAt, updated_at=:updatedAt where id=:id ";
+        String sql = "UPDATE workflow_event set status = 'SENT', sent_at=:sentAt, updated_at=:updatedAt where id=:id  and status = 'PENDING'";
 
         return namedParameterJdbcTemplate.update(sql, new MapSqlParameterSource()
                 .addValue("sentAt", item.getSentAt())

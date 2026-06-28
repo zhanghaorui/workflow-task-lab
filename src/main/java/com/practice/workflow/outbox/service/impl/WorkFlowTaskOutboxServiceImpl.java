@@ -2,6 +2,7 @@ package com.practice.workflow.outbox.service.impl;
 
 import com.alibaba.fastjson2.JSONObject;
 import com.practice.workflow.messaging.message.WorkflowTaskEventType;
+import com.practice.workflow.messaging.message.WorkflowTaskMessage;
 import com.practice.workflow.outbox.domain.WorkflowTaskOutbox;
 import com.practice.workflow.outbox.enums.OutboxStatus;
 import com.practice.workflow.outbox.repository.WorkFlowTaskOutboxRepository;
@@ -53,10 +54,12 @@ public class WorkFlowTaskOutboxServiceImpl implements WorkFlowTaskOutboxService 
     }
 
     private String buildPayload(WorkflowTaskOutbox workflowTaskOutbox) {
-        WorkflowTaskOutbox covert = new WorkflowTaskOutbox();
+        WorkflowTaskMessage covert = new WorkflowTaskMessage();
         covert.setTaskId(workflowTaskOutbox.getTaskId());
         covert.setBizKey(workflowTaskOutbox.getBizKey());
         covert.setEventType(WorkflowTaskEventType.AUTO_PROCESS_REQUESTED);
+        covert.setCreatedAt(LocalDateTime.now());
+        covert.setTraceId(UUID.randomUUID().toString());
         return JSONObject.toJSONString(covert);
     }
 }
